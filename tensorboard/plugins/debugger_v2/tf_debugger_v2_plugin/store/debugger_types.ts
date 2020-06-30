@@ -422,21 +422,13 @@ export interface Graphs {
   // Information about ops in graphs, indexed by: graph_id / op_name.
   // `graph_id` refers to the immediately-enclosing graph of the ops.
   ops: {
-    [graph_id: string]: {
-      // TODO(#3661): Decide on a way to avoid potential conflict with
-      // JavaScript builtin names.
-      [op_name: string]: GraphOpInfo;
-    };
+    [graph_id: string]: Map<string, GraphOpInfo>;
   };
 
   // What ops are currently being loaded from the data source.
   // `graph_id` refers to the immediately-enclosing graph of the ops.
   loadingOps: {
-    [graph_id: string]: {
-      // TODO(#3661): Decide on a way to avoid potential conflict with
-      // JavaScript builtin names.
-      [op_name: string]: DataLoadState;
-    };
+    [graph_id: string]: Map<string, DataLoadState>;
   };
 
   // Op being focused on in the UI (if any).
@@ -484,8 +476,8 @@ export interface SourceCodeState {
   // in the order that corresponds to `sourceFileList`.
   fileContents: SourceFileContent[];
 
-  // Index for the source line being focused on. The index is for
-  // the array in `sourceFileList`.
+  // Index for the source line being focused on by the user.
+  // The index is for the array in `sourceFileList`.
   // Use `null` for the case wherein no line is focused on.
   focusLineSpec: SourceLineSpec | null;
 }
@@ -494,6 +486,23 @@ export interface DebuggerState {
   // Runs that are available in the backend.
   runs: DebuggerRunListing;
   runsLoaded: LoadState;
+
+  // Timestamp for the onset of the last data polling (including the
+  // initial data-loading event triggered by plugin loading,
+  // and those triggered by TensorBoard's core auto and manual
+  // reloading).
+  // -1 is used as the initial value to indicate that no polling
+  // has ever happened.
+  lastDataPollOnsetTimeMs: number;
+  // Timestamp for the last non-empty data polling result (including errors).
+  // This is updated when any of the following is refreshed:
+  // - activeRunId
+  // - executions.executionDigestsLoaded.numExecutions
+  // - graphExecutions.executionDigestsLoaded.numExecutions
+  // - alerts.alertsLoaded.numAlerts
+  // -1 is used as the initial value to indicate that no non-empty
+  // polling result has arrived.
+  lastNonEmptyPollDataTimeMs: number;
 
   // ID of the run being currently displayed.
   // TODO(cais): The Debugger V2 plugin currently handles only one single run in
@@ -514,6 +523,15 @@ export interface DebuggerState {
   // Stack frames that have been loaded from data source so far, keyed by
   // stack-frame IDs.
   stackFrames: StackFramesById;
+
+  // Whether the bottommost frame in a focused source file should be
+  // automatically focused on.
+  //
+  // N.B.: Python stack frames are printed from bottommost to topmost,
+  // so what we mean by a "bottommost" stack frame is actually the one that
+  // appears at the top in a stack trace in most other languages such as
+  // Java and C++.
+  stickToBottommostFrameInFocusedFile: boolean;
 
   // What the currently focused code location (stack trace) describes.
   //   - `null` is for the case where no code location is focused on.

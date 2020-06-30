@@ -21,7 +21,13 @@ import {
   GraphExecutionDataResponse,
   SourceFileResponse,
 } from '../data_source/tfdbg2_data_source';
-import {findFileIndex, findBeginEndRangeIndex} from './debugger_store_utils';
+import {getFocusedStackFramesHelper} from './debugger_store_helpers';
+import {
+  computeBottommostLineSpec,
+  findFileIndex,
+  findBeginEndRangeIndex,
+  isFrameBottommostInStackTrace,
+} from './debugger_store_utils';
 import {
   AlertsByIndex,
   AlertType,
@@ -34,6 +40,7 @@ import {
   InfNanAlert,
   StackFramesById,
   SourceFileSpec,
+  SourceLineSpec,
 } from './debugger_types';
 
 // HACK: These imports are for type inference.
@@ -104,6 +111,13 @@ const initialState: DebuggerState = {
     lastLoadedTimeInMs: null,
   },
   activeRunId: null,
+  // The initial values of lastDataPollOnsetTimeMs and
+  // lastNonEmptyPollDataTimeMs ensures that initially, before
+  // the onset of any data polling, the difference of the two
+  // is 0, which causes a backing-off polling algorithm to use
+  // the lower-bound polling interval.
+  lastDataPollOnsetTimeMs: -1,
+  lastNonEmptyPollDataTimeMs: 1,
   alerts: {
     alertsLoaded: {
       state: DataLoadState.NOT_LOADED,
@@ -121,6 +135,7 @@ const initialState: DebuggerState = {
   graphs: createInitialGraphsState(),
   stackFrames: {},
   codeLocationFocusType: null,
+  stickToBottommostFrameInFocusedFile: false,
   sourceCode: {
     sourceFileListLoaded: {
       state: DataLoadState.NOT_LOADED,
@@ -163,17 +178,30 @@ const reducer = createReducer(
     actions.debuggerRunsLoaded,
     (state: DebuggerState, {runs}): DebuggerState => {
       const runIds = Object.keys(runs);
+      const activeRunChanged = runIds.length > 0 && state.activeRunId === null;
       return {
         ...state,
+        lastNonEmptyPollDataTimeMs: activeRunChanged
+          ? Date.now()
+          : state.lastNonEmptyPollDataTimeMs,
         runs,
         runsLoaded: {
           state: DataLoadState.LOADED,
           lastLoadedTimeInMs: Date.now(),
         },
-        activeRunId: runIds.length ? runIds[0] : null,
+        activeRunId: runIds.length > 0 ? runIds[0] : null,
         // TODO(cais): Handle multiple runs. We currently assumes there is only
         // one run, which is okay because the backend supports only one run
         // per experiment.
+      };
+    }
+  ),
+  on(
+    actions.debuggerDataPollOnset,
+    (state: DebuggerState): DebuggerState => {
+      return {
+        ...state,
+        lastDataPollOnsetTimeMs: Date.now(),
       };
     }
   ),
@@ -203,8 +231,12 @@ const reducer = createReducer(
       if (runId === null) {
         return state;
       }
+      const numAlertsIncreased = numAlerts > state.alerts.numAlerts;
       return {
         ...state,
+        lastNonEmptyPollDataTimeMs: numAlertsIncreased
+          ? Date.now()
+          : state.lastNonEmptyPollDataTimeMs,
         alerts: {
           ...state.alerts,
           alertsLoaded: {
@@ -366,8 +398,13 @@ const reducer = createReducer(
       if (runId === null) {
         return state;
       }
+      const numExecutionsIncreased =
+        numExecutions > state.executions.executionDigestsLoaded.numExecutions;
       const newState = {
         ...state,
+        lastNonEmptyPollDataTimeMs: numExecutionsIncreased
+          ? Date.now()
+          : state.lastNonEmptyPollDataTimeMs,
         executions: {
           ...state.executions,
           numExecutionsLoaded: {
@@ -546,7 +583,7 @@ const reducer = createReducer(
   on(
     actions.executionDigestFocused,
     (state: DebuggerState, action): DebuggerState => {
-      return {
+      const newState = {
         ...state,
         executions: {
           ...state.executions,
@@ -555,7 +592,12 @@ const reducer = createReducer(
         // An eager-execution event was last focused on, update the
         // code-location focus type to `EXECUTION`.
         codeLocationFocusType: CodeLocationType.EXECUTION,
+        sourceCode: {
+          ...state.sourceCode,
+        },
       };
+      newState.sourceCode.focusLineSpec = computeBottommostLineSpec(newState);
+      return newState;
     }
   ),
   on(
@@ -605,8 +647,14 @@ const reducer = createReducer(
       if (state.activeRunId === null) {
         return state;
       }
+      const numGraphExecutionsIncreased =
+        numGraphExecutions >
+        state.graphExecutions.executionDigestsLoaded.numExecutions;
       const newState = {
         ...state,
+        lastNonEmptyPollDataTimeMs: numGraphExecutionsIncreased
+          ? Date.now()
+          : state.lastNonEmptyPollDataTimeMs,
         graphExecutions: {
           ...state.graphExecutions,
           numExecutionsLoaded: {
@@ -711,7 +759,7 @@ const reducer = createReducer(
       state: DebuggerState,
       data: {graph_id: string; op_name: string}
     ): DebuggerState => {
-      return {
+      const newState = {
         ...state,
         graphs: {
           ...state.graphs,
@@ -723,7 +771,12 @@ const reducer = createReducer(
         // An graph event was last focused on, update the
         // code-location focus type to `GRAPH_OP_CREATION`.
         codeLocationFocusType: CodeLocationType.GRAPH_OP_CREATION,
+        sourceCode: {
+          ...state.sourceCode,
+        },
       };
+      newState.sourceCode.focusLineSpec = computeBottommostLineSpec(newState);
+      return newState;
     }
   ),
   on(
@@ -743,10 +796,13 @@ const reducer = createReducer(
         },
       };
       if (newState.graphs.loadingOps[graph_id] === undefined) {
-        newState.graphs.loadingOps[graph_id] = {};
+        newState.graphs.loadingOps[graph_id] = new Map<string, DataLoadState>();
       }
-      if (newState.graphs.loadingOps[graph_id][op_name] === undefined) {
-        newState.graphs.loadingOps[graph_id][op_name] = DataLoadState.LOADING;
+      if (!newState.graphs.loadingOps[graph_id].has(op_name)) {
+        newState.graphs.loadingOps[graph_id].set(
+          op_name,
+          DataLoadState.LOADING
+        );
       }
       return newState;
     }
@@ -763,15 +819,11 @@ const reducer = createReducer(
           ...state.graphs,
           ops: {
             ...state.graphs.ops,
-            [graphId]: {
-              ...state.graphs.ops[graphId],
-            },
+            [graphId]: new Map(state.graphs.ops[graphId]),
           },
           loadingOps: {
             ...state.graphs.loadingOps,
-            [graphId]: {
-              ...state.graphs.loadingOps[graphId],
-            },
+            [graphId]: new Map(state.graphs.loadingOps[graphId]),
           },
         },
       };
@@ -783,21 +835,21 @@ const reducer = createReducer(
           // Same for `consumer.data` below.
           continue;
         }
-        newState.graphs.ops[graphId][input.op_name] = input.data;
+        newState.graphs.ops[graphId].set(input.op_name, input.data);
       }
       for (let i = 0; i < graphOpInfoResponse.consumers.length; ++i) {
         for (const consumer of graphOpInfoResponse.consumers[i]) {
           if (!consumer.data) {
             continue;
           }
-          newState.graphs.ops[graphId][consumer.op_name] = consumer.data;
+          newState.graphs.ops[graphId].set(consumer.op_name, consumer.data);
         }
       }
-      newState.graphs.ops[graphId][graphOpInfoResponse.op_name] = {
+      newState.graphs.ops[graphId].set(graphOpInfoResponse.op_name, {
         ...graphOpInfoResponse,
         // Remove `input.data` to avoid duplicated data in `opInfo`,
         // which is put into `newState.graphs.ops[graphId][opInfo.op_name]`
-        // later.
+        // later.d
         // Same for `consumer.data` below.
         inputs: graphOpInfoResponse.inputs.map((input) => ({
           op_name: input.op_name,
@@ -809,10 +861,12 @@ const reducer = createReducer(
             input_slot: consumer.input_slot,
           }));
         }),
-      };
+      });
       // Remove the loading marker for the op.
-      newState.graphs.loadingOps[graphId][graphOpInfoResponse.op_name] =
-        DataLoadState.LOADED;
+      newState.graphs.loadingOps[graphId].set(
+        graphOpInfoResponse.op_name,
+        DataLoadState.LOADED
+      );
       return newState;
     }
   ),
@@ -863,14 +917,25 @@ const reducer = createReducer(
   ),
   on(
     actions.sourceLineFocused,
-    (state: DebuggerState, focus): DebuggerState => {
-      return {
+    (
+      state: DebuggerState,
+      focus: {sourceLineSpec: SourceLineSpec}
+    ): DebuggerState => {
+      const focusedStackTrace = getFocusedStackFramesHelper(state);
+      const newState = {
         ...state,
         sourceCode: {
           ...state.sourceCode,
           focusLineSpec: focus.sourceLineSpec,
         },
       };
+      if (focusedStackTrace !== null) {
+        newState.stickToBottommostFrameInFocusedFile = isFrameBottommostInStackTrace(
+          focusedStackTrace,
+          focus.sourceLineSpec
+        );
+      }
+      return newState;
     }
   ),
   on(
@@ -945,7 +1010,11 @@ const reducer = createReducer(
       const newState: DebuggerState = {
         ...state,
         stackFrames: {...state.stackFrames, ...stackFrames.stackFrames},
+        sourceCode: {
+          ...state.sourceCode,
+        },
       };
+      newState.sourceCode.focusLineSpec = computeBottommostLineSpec(newState);
       return newState;
     }
   )

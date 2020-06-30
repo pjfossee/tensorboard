@@ -342,9 +342,11 @@ class ProjectorPlugin(base_plugin.TBPlugin):
         """Returns a map of run paths to `ProjectorConfig` protos."""
         run_path_pairs = list(self.run_paths.items())
         self._append_plugin_asset_directories(run_path_pairs)
-        # If there are no summary event files, the projector should still work,
-        # treating the `logdir` as the model checkpoint directory.
-        if not run_path_pairs:
+        # Also accept the root logdir as a model checkpoint directory,
+        # so that the projector still works when there are no runs.
+        # (Case on `run` rather than `path` to avoid issues with
+        # absolute/relative paths on any filesystems.)
+        if not any(run == "." for (run, path) in run_path_pairs):
             run_path_pairs.append((".", self.logdir))
         if self._run_paths_changed() or _latest_checkpoints_changed(
             self._configs, run_path_pairs
@@ -484,7 +486,7 @@ class ProjectorPlugin(base_plugin.TBPlugin):
                 and _using_tf()
                 and not tf.io.gfile.glob(config.model_checkpoint_path + "*")
             ):
-                logger.warn(
+                logger.warning(
                     'Checkpoint file "%s" not found',
                     config.model_checkpoint_path,
                 )
@@ -503,7 +505,9 @@ class ProjectorPlugin(base_plugin.TBPlugin):
             try:
                 reader = tf.train.load_checkpoint(config.model_checkpoint_path)
             except Exception:  # pylint: disable=broad-except
-                logger.warn('Failed reading "%s"', config.model_checkpoint_path)
+                logger.warning(
+                    'Failed reading "%s"', config.model_checkpoint_path
+                )
         self.readers[run] = reader
         return reader
 

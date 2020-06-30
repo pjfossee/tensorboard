@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {createSelector, createFeatureSelector} from '@ngrx/store';
+import {getFocusedStackFramesHelper} from './debugger_store_helpers';
 import {findFileIndex} from './debugger_store_utils';
 import {
   AlertsBreakdown,
@@ -71,6 +72,22 @@ export const getDebuggerRunsLoaded = createSelector(
 export const getActiveRunId = createSelector(
   selectDebuggerState,
   (state: DebuggerState): string | null => state.activeRunId
+);
+
+/**
+ * Selectors related to data polling.
+ */
+
+/**
+ * Get the time elapsed from the last time at which a data polling
+ * yielded new data and the last polling time, in milliseconds.
+ * That is: this is how long polling has yielded no new data.
+ */
+export const getPollSilenceTimeMs = createSelector(
+  selectDebuggerState,
+  (state: DebuggerState): number => {
+    return state.lastDataPollOnsetTimeMs - state.lastNonEmptyPollDataTimeMs;
+  }
 );
 
 /**
@@ -308,7 +325,7 @@ export const getFocusedGraphOpInfo = createSelector(
     if (focusedOp === null || ops[focusedOp.graphId] === undefined) {
       return null;
     } else {
-      return ops[focusedOp.graphId][focusedOp.opName] || null;
+      return ops[focusedOp.graphId].get(focusedOp.opName) || null;
     }
   }
 );
@@ -320,18 +337,18 @@ export const getFocusedGraphOpInputs = createSelector(
     if (
       focusedOp === null ||
       ops[focusedOp.graphId] === undefined ||
-      ops[focusedOp.graphId][focusedOp.opName] === undefined
+      !ops[focusedOp.graphId].has(focusedOp.opName)
     ) {
       return null;
     } else {
       const graph = ops[focusedOp.graphId];
-      const {inputs} = graph[focusedOp.opName];
+      const {inputs} = graph.get(focusedOp.opName)!;
       return inputs.map((inputSpec) => {
         const spec: GraphOpInputSpec = {
           ...inputSpec,
         };
-        if (graph[inputSpec.op_name]) {
-          spec.data = graph[inputSpec.op_name];
+        if (graph.has(inputSpec.op_name)) {
+          spec.data = graph.get(inputSpec.op_name);
         }
         return spec;
       });
@@ -346,17 +363,17 @@ export const getFocusedGraphOpConsumers = createSelector(
     if (
       focusedOp === null ||
       ops[focusedOp.graphId] === undefined ||
-      ops[focusedOp.graphId][focusedOp.opName] === undefined
+      !ops[focusedOp.graphId].has(focusedOp.opName)
     ) {
       return null;
     } else {
       const graph = ops[focusedOp.graphId];
-      const {consumers} = graph[focusedOp.opName];
+      const {consumers} = graph.get(focusedOp.opName)!;
       return consumers.map((slotConsumers) => {
         return slotConsumers.map((consumerSpec) => {
           const spec: GraphOpConsumerSpec = {...consumerSpec};
-          if (graph[consumerSpec.op_name]) {
-            spec.data = graph[consumerSpec.op_name];
+          if (graph.has(consumerSpec.op_name)) {
+            spec.data = graph.get(consumerSpec.op_name);
           }
           return spec;
         });
@@ -442,9 +459,7 @@ export const getLoadedExecutionData = createSelector(
 
 export const getLoadingGraphOps = createSelector(
   selectDebuggerState,
-  (
-    state: DebuggerState
-  ): {[graph_id: string]: {[op_name: string]: DataLoadState}} =>
+  (state: DebuggerState): {[graph_id: string]: Map<string, DataLoadState>} =>
     state.graphs.loadingOps
 );
 
@@ -516,42 +531,10 @@ export const getCodeLocationOrigin = createSelector(
  * the data source yet), returns null.
  */
 export const getFocusedStackFrames = createSelector(
+  // TODO(cais): Rename this function as `getFocusedStackTrace()` to
+  // minimize confusion with `getFocusedSourceLineSpec()`.
   selectDebuggerState,
-  (state: DebuggerState): StackFrame[] | null => {
-    if (state.codeLocationFocusType === null) {
-      return null;
-    }
-    let stackFrameIds: string[] = [];
-    if (state.codeLocationFocusType === CodeLocationType.EXECUTION) {
-      const {focusIndex, executionData} = state.executions;
-      if (focusIndex === null || executionData[focusIndex] === undefined) {
-        return null;
-      }
-      stackFrameIds = executionData[focusIndex].stack_frame_ids;
-    } else {
-      // This is CodeLocationType.GRAPH_OP_CREATION.
-      if (state.graphs.focusedOp === null) {
-        return null;
-      }
-      const {graphId, opName} = state.graphs.focusedOp;
-      if (
-        state.graphs.ops[graphId] === undefined ||
-        state.graphs.ops[graphId][opName] === undefined
-      ) {
-        return null;
-      }
-      stackFrameIds = state.graphs.ops[graphId][opName].stack_frame_ids;
-    }
-    const stackFrames: StackFrame[] = [];
-    for (const stackFrameId of stackFrameIds) {
-      if (state.stackFrames[stackFrameId] != null) {
-        stackFrames.push(state.stackFrames[stackFrameId]);
-      } else {
-        return null;
-      }
-    }
-    return stackFrames;
-  }
+  getFocusedStackFramesHelper
 );
 
 /**
@@ -601,9 +584,26 @@ export const getFocusedSourceFileContent = createSelector(
   }
 );
 
+/**
+ * Get the source-code line being focused on.
+ *
+ * If the `stickingToBottommostFrameInFocusedFile` state is `true` and
+ * `focusedLIneSpec` is not null, this selector will return the bottommost
+ * stack frame in the file in `focusedLIneSpec`.
+ * Else, it'll directly return the value of `focusedLIneSpec`.
+ *
+ * This selector allows the UI to "track" lines in a source file of interest
+ * as a user navigates executions or graph ops.
+ */
 export const getFocusedSourceLineSpec = createSelector(
-  selectSourceCode,
-  (sourceCode: SourceCodeState): SourceLineSpec | null => {
-    return sourceCode.focusLineSpec;
+  selectDebuggerState,
+  (state: DebuggerState): SourceLineSpec | null =>
+    state.sourceCode.focusLineSpec
+);
+
+export const getStickToBottommostFrameInFocusedFile = createSelector(
+  selectDebuggerState,
+  (debuggerState: DebuggerState) => {
+    return debuggerState.stickToBottommostFrameInFocusedFile;
   }
 );

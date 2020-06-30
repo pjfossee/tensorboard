@@ -12,10 +12,24 @@ ng_module(
         "index.ts",
     ],
     deps = [
+        ":debugger_store_helpers",
         ":types",
         "//tensorboard/plugins/debugger_v2/tf_debugger_v2_plugin/actions",
         "//tensorboard/plugins/debugger_v2/tf_debugger_v2_plugin/data_source",
         "@npm//@ngrx/store",
+    ],
+)
+
+ng_module(
+    name = "debugger_store_helpers",
+    srcs = [
+        "debugger_store_helpers.ts",
+    ],
+    visibility = [
+        "//tensorboard/plugins/debugger_v2/tf_debugger_v2_plugin/store:__subpackages__",
+    ],
+    deps = [
+        ":types",
     ],
 )
 
@@ -50,10 +64,12 @@ tf_ts_library(
         "debugger_graphs_reducers_test.ts",
         "debugger_reducers_test.ts",
         "debugger_selectors_test.ts",
+        "debugger_store_utils_test.ts",
     ],
     tsconfig = "//:tsconfig-test",
     deps = [
         ":debug_tensor_value",
+        ":debugger_store_helpers",
         ":store",
         ":types",
         "//tensorboard/plugins/debugger_v2/tf_debugger_v2_plugin/actions",

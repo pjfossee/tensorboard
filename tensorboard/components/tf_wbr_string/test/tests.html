@@ -1,6 +1,7 @@
+<!DOCTYPE html>
 <!--
 @license
-Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,20 +16,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<link rel="import" href="../tf-imports/polymer.html" />
+<html>
+  <head>
+    <link rel="import" href="../../tf-imports/polymer.html" />
+    <script src="../../web-component-tester/browser.js"></script>
+    <link rel="import" href="../tf-wbr-string.html" />
+  </head>
+  <body>
+    <test-fixture id="tf-wbr-string">
+      <template>
+        <tf-wbr-string />
+      </template>
+    </test-fixture>
 
-<!--
-All the internal analytics tracking in tf-hparams is done through this object.
-In open source, we do not track users, so the methods in this object are no-ops.
--->
-<script>
-  (function() {
-    'use strict';
-
-    Polymer({
-      is: 'tf-hparams-google-analytics-tracker',
-
-      handleEvent: function(e) {},
-    });
-  })();
-</script>
+    <script src="tfWbrStringTests.js"></script>
+  </body>
+</html>
