@@ -16,16 +16,23 @@ limitations under the License.
 import {CommonModule} from '@angular/common';
 import {NgModule} from '@angular/core';
 //import {StoreModule} from '@ngrx/store';
-//import {EffectsModule} from '@ngrx/effects';
+import {EffectsModule} from '@ngrx/effects';
 
+import {Tftext2ServerDataSourceModule} from './data_source/tftext2_data_source_module';
 import {TextComponent} from './text_component';
 import {TextContainer} from './text_container';
+import {TextEffects} from './effects';
+//import {TEXT_FEATURE_KEY} from './store/text_types';
+//import {TextReducers} from './store/text_reducers';
 import {PluginRegistryModule} from '../../plugin_registry_module';
 
 @NgModule({
   declarations: [TextComponent, TextContainer],
   imports: [
     CommonModule,
+    // StoreModule.forFeature(TEXT_FEATURE_KEY, TextReducers),
+    Tftext2ServerDataSourceModule,
+    EffectsModule.forFeature([TextEffects]),
     PluginRegistryModule.forPlugin('text_v2', TextContainer),
   ],
   exports: [TextContainer],

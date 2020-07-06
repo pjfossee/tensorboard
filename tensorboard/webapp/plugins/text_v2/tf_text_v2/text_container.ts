@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 import {Component, OnInit} from '@angular/core';
-import {TBHttpClient} from '../../../webapp_data_source/tb_http_client';
-//import {createSelector, select, Store} from '@ngrx/store';
+import {Store} from '@ngrx/store';
+import {State} from './store/text_types';
+
+import {textPluginLoaded} from './actions';
 
 /** @typehack */ import * as _typeHackRxjs from 'rxjs';
 
@@ -25,10 +27,9 @@ import {TBHttpClient} from '../../../webapp_data_source/tb_http_client';
   `,
 })
 export class TextContainer implements OnInit {
-  constructor(private http: TBHttpClient) {}
+  constructor(private readonly store: Store<State>) {}
 
   ngOnInit(): void {
-    let data = this.http.get('data/plugin/text_v2/text');
-    console.log(data);
+    this.store.dispatch(textPluginLoaded());
   }
 }

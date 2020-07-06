@@ -19,8 +19,14 @@ ng_module(
     deps = [
         "//tensorboard/webapp/plugins:plugin_registry",
         "//tensorboard/webapp/webapp_data_source:http_client",
+        "//tensorboard/webapp/plugins/text_v2/tf_text_v2/actions",
+        "//tensorboard/webapp/plugins/text_v2/tf_text_v2/data_source",
+        "//tensorboard/webapp/plugins/text_v2/tf_text_v2/effects",
+        "//tensorboard/webapp/plugins/text_v2/tf_text_v2/store:types",
         "@npm//@angular/common",
         "@npm//@angular/core",
+        "@npm//@ngrx/effects",
+        "@npm//@ngrx/store",
+        "@npm//rxjs",
     ],
 )
-
