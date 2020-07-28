@@ -15,6 +15,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<div class="text-container">
-  <markdown-renderer [markdown]="'Hello *World*'"></markdown-renderer>
+<div [html]="convertToHTML(markdown)" class="markdown_renderer">
+
 </div>

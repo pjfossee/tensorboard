@@ -11,10 +11,13 @@ ng_module(
         "text_component.ts",
         "text_container.ts",
         "text_module.ts",
+        "views/markdown_renderer/markdown_renderer_component.ts",
     ],
     assets = [
         "text_component.css",
         "text_component.ng.html",
+        "views/markdown_renderer/markdown_renderer.css",
+        "views/markdown_renderer/markdown_renderer.ng.html",
     ],
     deps = [
         "//tensorboard/webapp/plugins:plugin_registry",
@@ -28,5 +31,6 @@ ng_module(
         "@npm//@ngrx/effects",
         "@npm//@ngrx/store",
         "@npm//rxjs",
+        "@npm//markdown"
     ],
 )

@@ -18,6 +18,7 @@ import {NgModule} from '@angular/core';
 //import {StoreModule} from '@ngrx/store';
 import {EffectsModule} from '@ngrx/effects';
 
+import {MarkdownRenderer} from './views/markdown_renderer/markdown_renderer_component';
 import {Tftext2ServerDataSourceModule} from './data_source/tftext2_data_source_module';
 import {TextComponent} from './text_component';
 import {TextContainer} from './text_container';
@@ -27,7 +28,7 @@ import {TextEffects} from './effects';
 import {PluginRegistryModule} from '../../plugin_registry_module';
 
 @NgModule({
-  declarations: [TextComponent, TextContainer],
+  declarations: [MarkdownRenderer, TextComponent, TextContainer],
   imports: [
     CommonModule,
     // StoreModule.forFeature(TEXT_FEATURE_KEY, TextReducers),
