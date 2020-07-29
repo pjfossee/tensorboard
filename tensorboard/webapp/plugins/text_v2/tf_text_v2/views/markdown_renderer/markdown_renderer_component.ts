@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 import {Component, Input} from '@angular/core';
-import marked from 'marked';
+//import * as marked from 'marked';
 
 @Component({
   selector: 'markdown-renderer',
@@ -25,6 +25,7 @@ export class MarkdownRenderer {
   markdown: string = '';
 
   convertToHTML(markdown: string) {
-    return marked(markdown);
+    //return marked.parse(markdown);
+    return markdown;
   }
 }
